@@ -3,7 +3,13 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import cross_val_score
+from sklearn.pipeline import Pipeline
+from xgboost import XGBClassifier
+from features import calculate_efficiency_stats, calculate_late_season_form, calculate_team_stats, return_X_y, calculate_sos, calculate_conf_tourney_performance
 
+conf_tourney = pd.read_csv('march-machine-learning-mania-2026/MConferenceTourneyGames.csv')
+
+regular_season_detailed = pd.read_csv('march-machine-learning-mania-2026/MRegularSeasonDetailedResults.csv')
 
 regular_season = pd.read_csv('march-machine-learning-mania-2026/MRegularSeasonCompactResults.csv')
 
@@ -16,86 +22,65 @@ seeds = pd.read_csv('march-machine-learning-mania-2026/MNCAATourneySeeds.csv')
 np.random.seed(42)
 
 
-def calculate_team_stats(df):
+# --- Run it ---
 
-    winners = df[['Season', 'WTeamID', 'WScore', 'LScore']].copy()
-    winners.columns = ['Season', 'TeamID', 'ScoreFor', 'ScoreAgainst']
-    winners['Win'] = 1
-
-    losers = regular_season[['Season', 'LTeamID', 'LScore', 'WScore']].copy()
-    losers.columns = ['Season', 'TeamID', 'ScoreFor', 'ScoreAgainst']
-    losers['Win'] = 0
-
-    all_games = pd.concat([winners, losers], ignore_index=True)
-
-    team_stats = all_games.groupby(['Season', 'TeamID']).agg(
-        WinRate   = ('Win', 'mean'),
-        AvgScore  = ('ScoreFor', 'mean'),
-        AvgAllowed = ('ScoreAgainst', 'mean'),
-    ).reset_index()
-
-    team_stats['AvgPointDiff'] = team_stats['AvgScore'] - team_stats['AvgAllowed']
-
-    return team_stats
-
-# For each tourney game, we need both teams' stats
-# Randomly assign winner/loser to team1/team2 so model doesn't learn position bias
-def return_X_y(seeds, tourney, team_stats):
-    
-    rows = []
-    for _, game in tourney.iterrows():
-        season = game['Season']
-        winner, loser = game['WTeamID'], game['LTeamID']
-        
-        # Randomly decide which team is "team1"
-        if np.random.rand() > 0.5:
-            t1, t2, label = winner, loser, 1  # team1 won
-        else:
-            t1, t2, label = loser, winner, 0  # team1 lost
-
-        # Look up stats for each team that season
-        s1 = team_stats[(team_stats['Season'] == season) & (team_stats['TeamID'] == t1)]
-        s2 = team_stats[(team_stats['Season'] == season) & (team_stats['TeamID'] == t2)]
-        
-        seed1 = seeds[(seeds['Season'] == season) & (seeds['TeamID'] == t1)]['SeedNum'].values[0]
-        seed2 = seeds[(seeds['Season'] == season) & (seeds['TeamID'] == t2)]['SeedNum'].values[0]
-
-        rows.append({
-            'SeedDiff'    : seed1 - seed2,
-            'WinRateDiff' : s1['WinRate'].values[0]      - s2['WinRate'].values[0],
-            'PtDiffDiff'  : s1['AvgPointDiff'].values[0] - s2['AvgPointDiff'].values[0],
-            'label'       : label
-        })
-
-    df = pd.DataFrame(rows)
-    X = df[['SeedDiff', 'WinRateDiff', 'PtDiffDiff']]
-    y = df['label']
-
-    return df, X, y
-
-# Extract seed number from e.g. 'W01' -> 1
 seeds['SeedNum'] = seeds['Seed'].str[1:3].astype(int)
+team_stats  = calculate_team_stats(regular_season)
+eff_stats   = calculate_efficiency_stats(regular_season_detailed)
+sos = calculate_sos(regular_season)
+late_stats = calculate_late_season_form(regular_season, n_games=10)
+conf_stats = calculate_conf_tourney_performance(conf_tourney, regular_season)
 
-team_stats = calculate_team_stats(regular_season)
+df, X, y = return_X_y(seeds, tourney, team_stats, eff_stats, late_stats, sos, conf_stats)
 
-df, X, y = return_X_y(seeds, tourney, team_stats)
+# Logistic regression baseline
+pipeline = Pipeline([
+    ('scaler', StandardScaler()),
+    ('model',  LogisticRegression())
+])
+cv_scores = cross_val_score(pipeline, X, y, cv=5, scoring='neg_log_loss')
+print(f"Logistic Regression Log Loss: {-cv_scores.mean():.4f}")
 
-print(X)
+# Gradient boosting — no scaling needed, trees are scale-invariant
+from sklearn.ensemble import GradientBoostingClassifier
+gb_pipeline = Pipeline([
+    ('model', GradientBoostingClassifier(
+    n_estimators=200,
+    learning_rate=0.02,   # slower learning
+    max_depth=2,
+    subsample=0.6,
+    min_samples_leaf=25,
+    max_features=0.8,     # like colsample_bytree — use 80% of features per split
+    random_state=42
+))
+])
+cv_scores_gb = cross_val_score(gb_pipeline, X, y, cv=5, scoring='neg_log_loss')
+print(f"Gradient Boosting Log Loss:   {-cv_scores_gb.mean():.4f}")
 
-print(y)
+# Fit final GB model
+gb_pipeline.fit(X, y)
+gb_model = gb_pipeline.named_steps['model']
 
-# Scale features - important for logistic regression
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
+xgb_pipeline = Pipeline([
+    ('model', XGBClassifier(
+        n_estimators=365,
+        learning_rate=0.0131,
+        max_depth=5,
+        subsample=0.9708,
+        colsample_bytree=0.9451,
+        reg_alpha=0.000359,
+        reg_lambda=0.000637,
+        min_child_weight=23,
+        eval_metric='logloss',
+        random_state=42,
+        verbosity=0,
+    ))
+])
+cv_scores_xgb = cross_val_score(xgb_pipeline, X, y, cv=5, scoring='neg_log_loss')
+print(f"XGBoost Log Loss: {-cv_scores_xgb.mean():.4f}")
 
-# Train model
-model = LogisticRegression()
-model.fit(X_scaled, y)
+# Feature importance (different from coefficients — this is reduction in loss)
+for name, imp in sorted(zip(X.columns, gb_model.feature_importances_), 
+                         key=lambda x: -x[1]):
+    print(f"{name}: {imp:.4f}")
 
-# Check how good it is with cross-validation
-cv_scores = cross_val_score(model, X_scaled, y, cv=5, scoring='neg_log_loss')
-print(f"Log Loss: {-cv_scores.mean():.4f}")
-
-# See which features matter most
-for name, coef in zip(X.columns, model.coef_[0]):
-    print(f"{name}: {coef:.4f}")

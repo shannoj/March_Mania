@@ -38,6 +38,7 @@ pipeline = Pipeline([
     ('scaler', StandardScaler()),
     ('model',  LogisticRegression())
 ])
+
 cv_scores = cross_val_score(pipeline, X, y, cv=5, scoring='neg_log_loss')
 print(f"Logistic Regression Log Loss: {-cv_scores.mean():.4f}")
 
@@ -76,6 +77,7 @@ xgb_pipeline = Pipeline([
         verbosity=0,
     ))
 ])
+
 cv_scores_xgb = cross_val_score(xgb_pipeline, X, y, cv=5, scoring='neg_log_loss')
 print(f"XGBoost Log Loss: {-cv_scores_xgb.mean():.4f}")
 

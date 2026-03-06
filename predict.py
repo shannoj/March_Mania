@@ -27,6 +27,8 @@ from features import (
     calculate_conf_tourney_performance,
 )
 
+UPSET_THRESHOLD = 0.54
+
 # ── 0. Reproducibility ────────────────────────────────────────────────────────
 np.random.seed(42)
 
@@ -227,3 +229,136 @@ bracket_results.to_csv('bracket_sim.csv', index=False)
 print("Top 10 championship contenders:")
 print(bracket_results.head(10).to_string(index=False))
 print("\nSaved full bracket simulation → bracket_sim.csv")
+
+# ── 7. Region-aware deterministic bracket simulation ─────────────────────────
+slots = pd.read_csv('march-machine-learning-mania-2026/MNCAATourneySlots.csv')
+slots_2026 = slots[slots['Season'] == PREDICT_SEASON]
+
+# Build seed → TeamID mapping for 2026
+seed_to_team = seeds[seeds['Season'] == PREDICT_SEASON].set_index('Seed')['TeamID'].to_dict()
+
+def simulate_bracket_from_slots(slots_df, deterministic=True):
+    """
+    Simulate the tournament using the actual bracket slot structure.
+    
+    deterministic=True  → always pick the higher-probability team
+    deterministic=False → sample by probability (Monte Carlo single run)
+    """
+    # slot_winner maps each slot name to the TeamID that won it
+    slot_winner = {}
+
+    # First, populate all first-round slots with actual seeded teams
+    # Slots that reference seeds directly (e.g. StrongSeed='W01') get filled first
+    for _, row in slots_df.iterrows():
+        slot      = row['Slot']
+        strong    = row['StrongSeed']
+        weak      = row['WeakSeed']
+
+        # Resolve strong seed to a team if it's a direct seed reference
+        if strong in seed_to_team:
+            t_strong = seed_to_team[strong]
+        else:
+            t_strong = slot_winner.get(strong)  # winner of a prior slot
+
+        if weak in seed_to_team:
+            t_weak = seed_to_team[weak]
+        else:
+            t_weak = slot_winner.get(weak)
+
+        if t_strong is None or t_weak is None:
+            continue  # prior round not yet resolved — will hit this slot again
+
+        p = win_prob(t_strong, t_weak)
+        if deterministic:
+            winner = t_strong if p >= 0.5 else t_weak
+        else:
+            winner = t_strong if np.random.rand() < p else t_weak
+
+        slot_winner[slot] = winner
+
+    return slot_winner
+
+ROUND_LABELS = {
+    'R1': 'Round of 64',
+    'R2': 'Round of 32', 
+    'R3': 'Sweet 16',
+    'R4': 'Elite 8',
+    'R5': 'Final Four',
+    'R6': 'Championship',
+}
+
+def resolve_bracket(slots_df):
+    slot_winner = {}
+    # Collect all games first, then print grouped by round
+    games_by_round = {}
+    max_passes = 10
+
+    for _ in range(max_passes):
+        prev_len = len(slot_winner)
+
+        for _, row in slots_df.iterrows():
+            slot   = row['Slot']
+            strong = row['StrongSeed']
+            weak   = row['WeakSeed']
+
+            if slot in slot_winner:
+                continue
+
+            t_strong = seed_to_team.get(strong) or slot_winner.get(strong)
+            t_weak   = seed_to_team.get(weak)   or slot_winner.get(weak)
+
+            if t_strong is None or t_weak is None:
+                continue
+
+            p = win_prob(t_strong, t_weak)
+            if max(p, 1 - p) < UPSET_THRESHOLD:
+                # Too close to call — flip a coin
+                winner = t_strong if np.random.rand() > 0.5 else t_weak
+            else:
+                winner = t_strong if p >= 0.5 else t_weak
+            loser = t_weak if winner == t_strong else t_strong
+
+            slot_winner[slot] = winner
+
+            round_key = slot[:2]  # e.g. 'R1', 'R2', etc.
+            if round_key not in games_by_round:
+                games_by_round[round_key] = []
+
+            seed_w = seeds_2026.loc[winner, 'SeedNum'] if winner in seeds_2026.index else '?'
+            seed_l = seeds_2026.loc[loser,  'SeedNum'] if loser  in seeds_2026.index else '?'
+
+            too_close = max(p, 1 - p) < UPSET_THRESHOLD
+            label_str = "  [TOSS-UP]" if too_close else ""
+
+            games_by_round[round_key].append(
+                f"  ({seed_w:>2}) {name_map.get(winner, winner):25s} "
+                f"def. ({seed_l:>2}) {name_map.get(loser, loser):25s}  "
+                f"[{max(p, 1-p):.1%}]{label_str}"
+            )
+
+        if len(slot_winner) == prev_len:
+            break
+
+    # Print everything grouped by round
+    for round_key in sorted(games_by_round.keys()):
+        label = ROUND_LABELS.get(round_key, round_key)
+        print(f"\n{'─'*60}")
+        print(f"  {label}")
+        print(f"{'─'*60}")
+        for line in games_by_round[round_key]:
+            print(line)
+
+    return slot_winner
+
+
+print("\n" + "="*70)
+print("DETERMINISTIC BRACKET SIMULATION (actual bracket structure)")
+print("="*70)
+results = resolve_bracket(slots_2026)
+
+# The championship slot is typically named 'R6CH' or similar — find it
+champ_slot = slots_2026['Slot'].max()  # highest slot alphabetically is usually the final
+champion_id = results.get(champ_slot)
+if champion_id:
+    print(f"\n🏆 Champion: {name_map.get(champion_id, champion_id)} "
+          f"(Seed {seeds_2026.loc[champion_id, 'SeedNum']})")

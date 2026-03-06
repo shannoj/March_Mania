@@ -86,3 +86,4 @@ for name, imp in sorted(zip(X.columns, gb_model.feature_importances_),
                          key=lambda x: -x[1]):
     print(f"{name}: {imp:.4f}")
 
+

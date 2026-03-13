@@ -79,6 +79,7 @@ xgb_pipeline = Pipeline([
 ])
 
 cv_scores_xgb = cross_val_score(xgb_pipeline, X, y, cv=5, scoring='neg_log_loss')
+
 print(f"XGBoost Log Loss: {-cv_scores_xgb.mean():.4f}")
 
 # Feature importance (different from coefficients — this is reduction in loss)

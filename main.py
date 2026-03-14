@@ -4,8 +4,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import cross_val_score
 from sklearn.pipeline import Pipeline
-from xgboost import XGBClassifier
-from features import calculate_efficiency_stats, calculate_late_season_form, calculate_team_stats, return_X_y, calculate_sos, calculate_conf_tourney_performance
+from features import calculate_efficiency_stats, calculate_late_season_form, calculate_team_stats, return_X_y, calculate_sos, calculate_conf_tourney_performance, train_team_embeddings
 
 conf_tourney = pd.read_csv('march-machine-learning-mania-2026/MConferenceTourneyGames.csv')
 
@@ -31,7 +30,13 @@ sos = calculate_sos(regular_season)
 late_stats = calculate_late_season_form(regular_season, n_games=10)
 conf_stats = calculate_conf_tourney_performance(conf_tourney, regular_season)
 
-df, X, y = return_X_y(seeds, tourney, team_stats, eff_stats, late_stats, sos, conf_stats)
+print("Training team embeddings on regular season data...")
+embeddings = train_team_embeddings(regular_season, embed_dim=16, epochs=30)
+
+# Import xgboost after torch finishes to avoid a segfault on Python 3.14
+from xgboost import XGBClassifier
+
+df, X, y = return_X_y(seeds, tourney, team_stats, eff_stats, late_stats, sos, conf_stats, embeddings=embeddings)
 
 # Logistic regression baseline
 pipeline = Pipeline([

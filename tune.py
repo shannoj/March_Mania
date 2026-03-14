@@ -2,12 +2,16 @@
 import optuna
 import numpy as np
 import pandas as pd
+
+# Import torch before xgboost to avoid segfault on Python 3.14
+import torch
 from xgboost import XGBClassifier
 from sklearn.model_selection import cross_val_score
 from features import (
     calculate_efficiency_stats, calculate_late_season_form,
     calculate_team_stats, return_X_y, calculate_sos,
     calculate_conf_tourney_performance, calculate_elo, calculate_massey_rank,
+    train_team_embeddings,
 )
 
 np.random.seed(42)
@@ -33,17 +37,22 @@ def build_dataset(prefix, massey_df=None):
     elo_ratings  = calculate_elo(regular_season)
     massey_ranks = calculate_massey_rank(massey_df) if massey_df is not None else None
 
+    print(f"  Training {prefix} embeddings...")
+    embeddings = train_team_embeddings(regular_season, embed_dim=16, epochs=30)
+
     _, X, y = return_X_y(seeds, tourney_detailed, team_stats, eff_stats,
-                          late_stats, sos, conf_stats, elo_ratings, massey_ranks)
+                          late_stats, sos, conf_stats, elo_ratings, massey_ranks,
+                          embeddings=embeddings)
     return X, y
 
 
 def tune(prefix, label, massey_df=None, n_trials=200):
     print(f"\n{'='*60}")
-    print(f"  Tuning {label}'s model ({n_trials} trials)")
+    print(f"  Tuning {label}'s XGBoost ({n_trials} trials, {28} features)")
     print(f"{'='*60}")
 
     X, y = build_dataset(prefix, massey_df)
+    print(f"  Dataset: {X.shape[0]} rows x {X.shape[1]} features")
 
     def objective(trial):
         params = {
@@ -70,20 +79,34 @@ def tune(prefix, label, massey_df=None, n_trials=200):
     for k, v in study.best_params.items():
         print(f"  {k}: {v}")
 
-    return study.best_params
+    return study.best_params, study.best_value
 
 
 massey_df = pd.read_csv(f'{DATA}/MMasseyOrdinals.csv')
 
-mens_params   = tune('M', "Men",   massey_df=massey_df)
-womens_params = tune('W', "Women", massey_df=None)
+# Only tune men's — women's uses Logistic Regression (better CV log loss)
+mens_params, mens_best = tune('M', "Men", massey_df=massey_df)
 
-print("\n\n" + "="*60)
-print("PASTE THESE INTO submit.py build_xgb():")
-print("="*60)
-print("\nMen's params:")
+# ── Auto-update MENS_PARAMS in submit.py ─────────────────────────────────────
+import re
+
+params_str = 'MENS_PARAMS = dict(\n'
 for k, v in mens_params.items():
-    print(f"  {k}={repr(v)},")
-print("\nWomen's params:")
-for k, v in womens_params.items():
-    print(f"  {k}={repr(v)},")
+    params_str += f'    {k}={repr(v)},\n'
+params_str += ')'
+
+with open('submit.py', 'r') as f:
+    content = f.read()
+
+content = re.sub(
+    r'MENS_PARAMS = dict\(.*?\)',
+    params_str,
+    content,
+    flags=re.DOTALL,
+)
+
+with open('submit.py', 'w') as f:
+    f.write(content)
+
+print(f"\nUpdated MENS_PARAMS in submit.py (best log loss: {mens_best:.4f})")
+print("Run `python submit.py` to regenerate submission.csv")

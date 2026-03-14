@@ -271,7 +271,80 @@ def calculate_conf_tourney_performance(conf_tourney, regular_season):
     return conf_stats
 
 
-def return_X_y(seeds, tourney, team_stats, eff_stats, late_stats, sos, conf_stats, elo_ratings=None, massey_ranks=None):
+def train_team_embeddings(regular_season, embed_dim=16, epochs=30, lr=0.01):
+    """
+    Learn a dense embedding for each (Season, TeamID) pair by training on
+    regular season game outcomes. The model predicts P(team1 beats team2)
+    from the difference of their embeddings.
+
+    Returns a DataFrame with columns: Season, TeamID, Emb0, Emb1, ..., Emb{embed_dim-1}
+    """
+    import torch
+    import torch.nn as nn
+    from torch.utils.data import DataLoader, TensorDataset
+
+    # Map every (Season, TeamID) pair to a unique integer index
+    all_teams = pd.concat([
+        regular_season[['Season', 'WTeamID']].rename(columns={'WTeamID': 'TeamID'}),
+        regular_season[['Season', 'LTeamID']].rename(columns={'LTeamID': 'TeamID'}),
+    ]).drop_duplicates().reset_index(drop=True)
+    team_idx = {(row.Season, row.TeamID): i for i, row in all_teams.iterrows()}
+    n = len(team_idx)
+
+    w_idx = regular_season.apply(lambda r: team_idx[(r['Season'], r['WTeamID'])], axis=1).values
+    l_idx = regular_season.apply(lambda r: team_idx[(r['Season'], r['LTeamID'])], axis=1).values
+
+    # Randomly flip some pairs so the model sees both orderings
+    rng = np.random.default_rng(42)
+    flip = rng.random(len(w_idx)) > 0.5
+    t1 = np.where(flip, l_idx, w_idx)
+    t2 = np.where(flip, w_idx, l_idx)
+    labels = np.where(flip, 0.0, 1.0)
+
+    dataset = TensorDataset(
+        torch.LongTensor(t1),
+        torch.LongTensor(t2),
+        torch.FloatTensor(labels),
+    )
+    loader = DataLoader(dataset, batch_size=512, shuffle=True)
+
+    class EmbeddingModel(nn.Module):
+        def __init__(self, n, dim):
+            super().__init__()
+            self.emb = nn.Embedding(n, dim)
+            self.head = nn.Linear(dim, 1, bias=False)
+
+        def forward(self, a, b):
+            return torch.sigmoid(self.head(self.emb(a) - self.emb(b))).squeeze(1)
+
+    model = EmbeddingModel(n, embed_dim)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    criterion = nn.BCELoss()
+
+    for epoch in range(epochs):
+        model.train()
+        total_loss = 0.0
+        for a, b, y in loader:
+            optimizer.zero_grad()
+            loss = criterion(model(a, b), y)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+        if (epoch + 1) % 10 == 0:
+            print(f"  Embedding epoch {epoch+1}/{epochs}  loss={total_loss/len(loader):.4f}")
+
+    model.eval()
+    with torch.no_grad():
+        all_embs = model.emb.weight.numpy()
+
+    records = [
+        {'Season': season, 'TeamID': team_id, **{f'Emb{d}': all_embs[idx, d] for d in range(embed_dim)}}
+        for (season, team_id), idx in team_idx.items()
+    ]
+    return pd.DataFrame(records)
+
+
+def return_X_y(seeds, tourney, team_stats, eff_stats, late_stats, sos, conf_stats, elo_ratings=None, massey_ranks=None, embeddings=None):
 
     ts = team_stats.set_index(['Season', 'TeamID'])
     es = eff_stats.set_index(['Season', 'TeamID'])
@@ -281,6 +354,8 @@ def return_X_y(seeds, tourney, team_stats, eff_stats, late_stats, sos, conf_stat
     sd = seeds.set_index(['Season', 'TeamID'])['SeedNum']
     er = elo_ratings.set_index(['Season', 'TeamID'])['Elo'] if elo_ratings is not None else None
     mr = massey_ranks.set_index(['Season', 'TeamID'])['MasseyRank'] if massey_ranks is not None else None
+    eb = embeddings.set_index(['Season', 'TeamID']) if embeddings is not None else None
+    emb_cols = [c for c in embeddings.columns if c.startswith('Emb')] if embeddings is not None else []
 
     rows = []
     for _, game in tourney.iterrows():
@@ -327,6 +402,15 @@ def return_X_y(seeds, tourney, team_stats, eff_stats, late_stats, sos, conf_stat
             except KeyError:
                 pass
 
+        emb_diff = {}
+        if eb is not None:
+            try:
+                e1v = eb.loc[(season, t1)][emb_cols].values
+                e2v = eb.loc[(season, t2)][emb_cols].values
+                emb_diff = {f'EmbDiff{d}': float(e1v[d] - e2v[d]) for d in range(len(emb_cols))}
+            except KeyError:
+                emb_diff = {f'EmbDiff{d}': 0.0 for d in range(len(emb_cols))}
+
         rows.append({
             'SeedDiff'        : seed1 - seed2,
             'WinRateDiff'     : s1['WinRate']      - s2['WinRate'],
@@ -340,6 +424,7 @@ def return_X_y(seeds, tourney, team_stats, eff_stats, late_stats, sos, conf_stat
             'AdjWinRateDiff'  : (s1['WinRate'] * o1['SOS']) - (s2['WinRate'] * o2['SOS']),
             'EloDiff'         : elo_diff,
             'MasseyRankDiff'  : massey_diff,
+            **emb_diff,
             'label'           : label,
         })
 
@@ -348,7 +433,7 @@ def return_X_y(seeds, tourney, team_stats, eff_stats, late_stats, sos, conf_stat
         'SeedDiff', 'WinRateDiff', 'PtDiffDiff', 'NetEffDiff', 'TempoDiff',
         'WinRateMomentum', 'PtDiffMomentum', 'SOSDiff', 'AdjWinRateDiff', 'SOS2Diff',
         'EloDiff', 'MasseyRankDiff',
-    ]
+    ] + [c for c in df.columns if c.startswith('EmbDiff')]
     X = df[feature_cols]
     y = df['label']
 

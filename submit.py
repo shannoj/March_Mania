@@ -15,7 +15,8 @@ import itertools
 import pandas as pd
 import numpy as np
 from sklearn.pipeline import Pipeline
-from xgboost import XGBClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
 
 from features import (
     calculate_efficiency_stats,
@@ -26,6 +27,7 @@ from features import (
     calculate_conf_tourney_performance,
     calculate_elo,
     calculate_massey_rank,
+    train_team_embeddings,
 )
 
 np.random.seed(42)
@@ -36,49 +38,28 @@ PREDICT_SEASON = 2026
 SEED_PROXY_SEASON = 2025
 DEFAULT_SEED = 16  # weakest seed for teams not in the seed proxy season
 
-FEATURE_COLS = [
-    'SeedDiff', 'WinRateDiff', 'PtDiffDiff', 'NetEffDiff', 'TempoDiff',
-    'WinRateMomentum', 'PtDiffMomentum', 'SOSDiff', 'AdjWinRateDiff', 'SOS2Diff',
-    'EloDiff', 'MasseyRankDiff',
-]
-
-
 MENS_PARAMS = dict(
-    n_estimators=234,
-    learning_rate=0.016056625129573475,
-    max_depth=3,
-    subsample=0.7272325021079066,
-    colsample_bytree=0.8376124755483081,
-    reg_alpha=0.0013874206365291576,
-    reg_lambda=0.024733780434062328,
-    min_child_weight=7,
-)
-
-WOMENS_PARAMS = dict(
-    n_estimators=386,
-    learning_rate=0.011978621118783415,
+    n_estimators=231,
+    learning_rate=0.020348000114701417,
     max_depth=2,
-    subsample=0.5450461171243898,
-    colsample_bytree=0.5211229272878785,
-    reg_alpha=0.00014016937971181176,
-    reg_lambda=0.00010478510031154102,
-    min_child_weight=2,
+    subsample=0.5437066884244697,
+    colsample_bytree=0.5211671523937955,
+    reg_alpha=0.00015816307747082452,
+    reg_lambda=0.00019858901258540043,
+    min_child_weight=8,
 )
 
 
-def build_xgb(params):
-    return Pipeline([
-        ('model', XGBClassifier(**params, eval_metric='logloss', random_state=42, verbosity=0))
-    ])
-
-
-def train_and_predict(prefix, sample_ids, xgb_params, massey_df=None):
+def train_and_predict(prefix, sample_ids, xgb_params=None, massey_df=None):
     """
     Train a model on historical tournament data for the given gender prefix
     ('M' or 'W'), then predict win probabilities for all matchup pairs in
     sample_ids.
 
-    Returns a dict: {(lower_id, higher_id): prob_lower_wins}
+    Men's: XGBoost with tuned hyperparameters + embeddings
+    Women's: Logistic Regression + embeddings (better CV log loss for women)
+
+    Returns a list of {'ID': ..., 'Pred': ...} dicts.
     """
     print(f"\n{'='*60}")
     print(f"  Processing {'Men' if prefix == 'M' else 'Women'}'s tournament")
@@ -94,22 +75,40 @@ def train_and_predict(prefix, sample_ids, xgb_params, massey_df=None):
 
     seeds_all['SeedNum'] = seeds_all['Seed'].str[1:3].astype(int)
 
-    # ── Build features on all historical data ──────────────────────
-    team_stats  = calculate_team_stats(regular_season)
-    eff_stats   = calculate_efficiency_stats(regular_season_detailed)
-    sos         = calculate_sos(regular_season)
-    late_stats  = calculate_late_season_form(regular_season, n_games=10)
-    conf_stats  = calculate_conf_tourney_performance(conf_tourney, regular_season)
+    # ── Build hand-crafted features ────────────────────────────────
+    team_stats   = calculate_team_stats(regular_season)
+    eff_stats    = calculate_efficiency_stats(regular_season_detailed)
+    sos          = calculate_sos(regular_season)
+    late_stats   = calculate_late_season_form(regular_season, n_games=10)
+    conf_stats   = calculate_conf_tourney_performance(conf_tourney, regular_season)
     elo_ratings  = calculate_elo(regular_season)
     massey_ranks = calculate_massey_rank(massey_df) if massey_df is not None else None
 
+    # ── Train team embeddings on regular season data ───────────────
+    print(f"  Training team embeddings...")
+    embeddings = train_team_embeddings(regular_season, embed_dim=16, epochs=30)
+    emb_cols = [c for c in embeddings.columns if c.startswith('Emb')]
+    eb = embeddings.set_index(['Season', 'TeamID'])
+
+    # ── Import XGBoost after torch finishes (avoids segfault on Py 3.14) ──
+    from xgboost import XGBClassifier
+
     df, X, y = return_X_y(seeds_all, tourney_detailed, team_stats, eff_stats,
-                           late_stats, sos, conf_stats, elo_ratings, massey_ranks)
+                           late_stats, sos, conf_stats, elo_ratings, massey_ranks,
+                           embeddings=embeddings)
+
+    feature_cols = list(X.columns)
 
     # ── Train model ────────────────────────────────────────────────
-    model = build_xgb(xgb_params)
+    if prefix == 'W':
+        # LR outperforms XGBoost on women's data (less upset-prone, more linear)
+        model = Pipeline([('scaler', StandardScaler()), ('model', LogisticRegression())])
+    else:
+        model = Pipeline([
+            ('model', XGBClassifier(**xgb_params, eval_metric='logloss', random_state=42, verbosity=0))
+        ])
     model.fit(X, y)
-    print(f"  Model trained on {len(X)} historical matchups.")
+    print(f"  Model trained on {len(X)} historical matchups ({len(feature_cols)} features).")
 
     # ── Build 2026 stat lookup tables ──────────────────────────────
     ts = team_stats.set_index(['Season', 'TeamID'])
@@ -120,23 +119,14 @@ def train_and_predict(prefix, sample_ids, xgb_params, massey_df=None):
     er = elo_ratings.set_index(['Season', 'TeamID'])['Elo']
     mr = massey_ranks.set_index(['Season', 'TeamID'])['MasseyRank'] if massey_ranks is not None else None
 
-    # Seed proxy: use SEED_PROXY_SEASON seeds; default to DEFAULT_SEED if absent
     seeds_proxy = (
         seeds_all[seeds_all['Season'] == SEED_PROXY_SEASON]
         .set_index('TeamID')['SeedNum']
         .to_dict()
     )
 
-    name_map = teams.set_index('TeamID')['TeamName'].to_dict()
-
     def get_seed(team_id):
         return seeds_proxy.get(team_id, DEFAULT_SEED)
-
-    def get_conf_stat(team_id, col):
-        try:
-            return cs.loc[(PREDICT_SEASON, team_id)][col]
-        except KeyError:
-            return 0.0
 
     def build_features(t1, t2):
         try:
@@ -161,6 +151,13 @@ def train_and_predict(prefix, sample_ids, xgb_params, massey_df=None):
         except KeyError:
             massey_diff = 0.0
 
+        try:
+            e1v = eb.loc[(PREDICT_SEASON, t1)][emb_cols].values
+            e2v = eb.loc[(PREDICT_SEASON, t2)][emb_cols].values
+            emb_diff = {f'EmbDiff{d}': float(e1v[d] - e2v[d]) for d in range(len(emb_cols))}
+        except KeyError:
+            emb_diff = {f'EmbDiff{d}': 0.0 for d in range(len(emb_cols))}
+
         row = {
             'SeedDiff'        : get_seed(t1) - get_seed(t2),
             'WinRateDiff'     : s1['WinRate']      - s2['WinRate'],
@@ -174,8 +171,9 @@ def train_and_predict(prefix, sample_ids, xgb_params, massey_df=None):
             'AdjWinRateDiff'  : (s1['WinRate'] * o1['SOS']) - (s2['WinRate'] * o2['SOS']),
             'EloDiff'         : elo_diff,
             'MasseyRankDiff'  : massey_diff,
+            **emb_diff,
         }
-        return pd.DataFrame([row])[FEATURE_COLS]
+        return pd.DataFrame([row])[feature_cols]
 
     # ── Predict all required pairs ─────────────────────────────────
     records = []
@@ -183,7 +181,6 @@ def train_and_predict(prefix, sample_ids, xgb_params, massey_df=None):
     for lower_id, higher_id in sample_ids:
         feats = build_features(lower_id, higher_id)
         if feats is None:
-            # Fall back to 0.5 if stats are missing for either team
             records.append({'ID': f'{PREDICT_SEASON}_{lower_id}_{higher_id}', 'Pred': 0.5})
             skipped += 1
             continue
@@ -217,14 +214,13 @@ print(f"  Women's pairs: {len(womens_pairs):,}")
 # ── Generate predictions for each gender ─────────────────────────────────────
 massey_df = pd.read_csv(f'{DATA}/MMasseyOrdinals.csv')
 
-mens_records   = train_and_predict('M', mens_pairs, MENS_PARAMS,   massey_df=massey_df)
-womens_records = train_and_predict('W', womens_pairs, WOMENS_PARAMS)
+mens_records   = train_and_predict('M', mens_pairs, xgb_params=MENS_PARAMS, massey_df=massey_df)
+womens_records = train_and_predict('W', womens_pairs)
 
 # ── Combine and save ──────────────────────────────────────────────────────────
 all_records = mens_records + womens_records
 submission = pd.DataFrame(all_records)[['ID', 'Pred']]
 
-# Verify it matches the sample submission order
 submission = submission.set_index('ID').reindex(sample['ID']).reset_index()
 submission['Pred'] = submission['Pred'].fillna(0.5)
 

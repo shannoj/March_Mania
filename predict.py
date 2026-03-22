@@ -33,12 +33,12 @@ UPSET_THRESHOLD = 0.54
 np.random.seed(42)
 
 # ── 1. Load data ──────────────────────────────────────────────────────────────
-conf_tourney            = pd.read_csv('march-machine-learning-mania-2026/MConferenceTourneyGames.csv')
-regular_season_detailed = pd.read_csv('march-machine-learning-mania-2026/MRegularSeasonDetailedResults.csv')
-regular_season          = pd.read_csv('march-machine-learning-mania-2026/MRegularSeasonCompactResults.csv')
-tourney                 = pd.read_csv('march-machine-learning-mania-2026/MNCAATourneyDetailedResults.csv')
-seeds                   = pd.read_csv('march-machine-learning-mania-2026/MNCAATourneySeeds.csv')
-teams                   = pd.read_csv('march-machine-learning-mania-2026/MTeams.csv')  # for readable names
+conf_tourney            = pd.read_csv('march-machine-learning-mania-2026_2/MConferenceTourneyGames.csv')
+regular_season_detailed = pd.read_csv('march-machine-learning-mania-2026_2/MRegularSeasonDetailedResults.csv')
+regular_season          = pd.read_csv('march-machine-learning-mania-2026_2/MRegularSeasonCompactResults.csv')
+tourney                 = pd.read_csv('march-machine-learning-mania-2026_2/MNCAATourneyDetailedResults.csv')
+seeds                   = pd.read_csv('march-machine-learning-mania-2026_2/MNCAATourneySeeds.csv')
+teams                   = pd.read_csv('march-machine-learning-mania-2026_2/MTeams.csv')  # for readable names
 
 # ── 2. Build features (same pipeline as main.py) ──────────────────────────────
 seeds['SeedNum'] = seeds['Seed'].str[1:3].astype(int)
@@ -54,6 +54,7 @@ df, X, y = return_X_y(seeds, tourney, team_stats, eff_stats, late_stats, sos, co
 FEATURE_COLS = [
     'SeedDiff', 'WinRateDiff', 'PtDiffDiff', 'NetEffDiff', 'TempoDiff',
     'WinRateMomentum', 'PtDiffMomentum', 'SOSDiff', 'AdjWinRateDiff', 'SOS2Diff',
+    'EloDiff', 'MasseyRankDiff',
 ]
 
 # ── 3. Train final model on all historical data ───────────────────────────────
@@ -136,6 +137,8 @@ def build_features_for_pair(t1, t2):
         'AdjWinRateDiff'  : (s1['WinRate'] * o1['SOS']) - (s2['WinRate'] * o2['SOS']),
         'ConfWinRateDiff' : c1_wr - c2_wr,
         'ConfPtDiffDiff'  : c1_pd - c2_pd,
+        'EloDiff'         : 0.0,
+        'MasseyRankDiff'  : 0.0,
     }
     return pd.DataFrame([row])[FEATURE_COLS]
 
@@ -231,7 +234,7 @@ print(bracket_results.head(10).to_string(index=False))
 print("\nSaved full bracket simulation → bracket_sim.csv")
 
 # ── 7. Region-aware deterministic bracket simulation ─────────────────────────
-slots = pd.read_csv('march-machine-learning-mania-2026/MNCAATourneySlots.csv')
+slots = pd.read_csv('march-machine-learning-mania-2026_2/MNCAATourneySlots.csv')
 slots_2026 = slots[slots['Season'] == PREDICT_SEASON]
 
 # Build seed → TeamID mapping for 2026

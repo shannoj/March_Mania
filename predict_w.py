@@ -36,12 +36,12 @@ UPSET_THRESHOLD = 0.54
 np.random.seed(42)
 
 # ── 1. Load data ──────────────────────────────────────────────────────────────
-conf_tourney            = pd.read_csv('march-machine-learning-mania-2026/WConferenceTourneyGames.csv')
-regular_season_detailed = pd.read_csv('march-machine-learning-mania-2026/WRegularSeasonDetailedResults.csv')
-regular_season          = pd.read_csv('march-machine-learning-mania-2026/WRegularSeasonCompactResults.csv')
-tourney                 = pd.read_csv('march-machine-learning-mania-2026/WNCAATourneyDetailedResults.csv')
-seeds                   = pd.read_csv('march-machine-learning-mania-2026/WNCAATourneySeeds.csv')
-teams                   = pd.read_csv('march-machine-learning-mania-2026/WTeams.csv')
+conf_tourney            = pd.read_csv('march-machine-learning-mania-2026_2/WConferenceTourneyGames.csv')
+regular_season_detailed = pd.read_csv('march-machine-learning-mania-2026_2/WRegularSeasonDetailedResults.csv')
+regular_season          = pd.read_csv('march-machine-learning-mania-2026_2/WRegularSeasonCompactResults.csv')
+tourney                 = pd.read_csv('march-machine-learning-mania-2026_2/WNCAATourneyDetailedResults.csv')
+seeds                   = pd.read_csv('march-machine-learning-mania-2026_2/WNCAATourneySeeds.csv')
+teams                   = pd.read_csv('march-machine-learning-mania-2026_2/WTeams.csv')
 
 # ── 2. Build features (same pipeline as submit.py women's branch) ─────────────
 seeds['SeedNum'] = seeds['Seed'].str[1:3].astype(int)
@@ -222,7 +222,7 @@ print(bracket_results.head(10).to_string(index=False))
 print("\nSaved full bracket simulation → bracket_sim_w.csv")
 
 # ── 7. Region-aware deterministic bracket simulation ─────────────────────────
-slots = pd.read_csv('march-machine-learning-mania-2026/WNCAATourneySlots.csv')
+slots = pd.read_csv('march-machine-learning-mania-2026_2/WNCAATourneySlots.csv')
 slots_2026 = slots[slots['Season'] == PREDICT_SEASON]
 
 seed_to_team = seeds[seeds['Season'] == PREDICT_SEASON].set_index('Seed')['TeamID'].to_dict()

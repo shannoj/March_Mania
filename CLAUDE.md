@@ -6,19 +6,21 @@ NCAA tournament prediction project for the Kaggle March Machine Learning Mania 2
 
 ```
 March_Mania/
-├── features.py          # Feature engineering (stats, ELO, embeddings, etc.)
-├── main.py              # Model training and evaluation
-├── predict.py           # Men's predictions + bracket simulation
-├── predict_w.py         # Women's predictions + bracket simulation
-├── submit.py            # Kaggle submission generator
-├── tune.py              # Optuna hyperparameter tuning
-├── app.py               # Streamlit web dashboard
-├── lookup.py            # CLI team prediction lookup
-├── predictions.csv      # Men's matchup probabilities
-├── predictions_w.csv    # Women's matchup probabilities
-├── bracket_sim.csv      # Men's championship odds (Monte Carlo)
-├── bracket_sim_w.csv    # Women's championship odds
-└── submission.csv       # Final Kaggle submission
+├── features.py            # Feature engineering (stats, ELO, embeddings, etc.)
+├── main.py                # Model training and evaluation
+├── predict.py             # Men's predictions + bracket simulation
+├── predict_w.py           # Women's predictions + bracket simulation
+├── submit.py              # Kaggle submission generator
+├── tune.py                # Optuna hyperparameter tuning
+├── app.py                 # Streamlit web dashboard (4 pages)
+├── generate_bracket.py    # Generates standalone bracket.html
+├── bracket.html           # Yahoo-style interactive bracket (open via HTTP server)
+├── lookup.py              # CLI team prediction lookup
+├── predictions.csv        # Men's matchup probabilities
+├── predictions_w.csv      # Women's matchup probabilities
+├── bracket_sim.csv        # Men's championship odds (Monte Carlo)
+├── bracket_sim_w.csv      # Women's championship odds
+└── submission.csv         # Final Kaggle submission
 ```
 
 ## Data
@@ -53,18 +55,31 @@ Key functions used in `return_X_y()` to build the ~28-feature training matrix:
 2. **Tune:** `python tune.py` — Optuna hyperparameter search, auto-updates submit.py
 3. **Predict:** `python predict.py` / `python predict_w.py` — regenerates prediction CSVs
 4. **Submit:** `python submit.py` — builds Kaggle submission.csv
-5. **Explore:** `streamlit run app.py` — interactive dashboard
-6. **Lookup:** `python lookup.py <team1> <team2>` — quick CLI prediction
+5. **Explore:** `streamlit run app.py` — interactive dashboard (Head-to-Head, Team Matchups, Championship Odds, Bracket View)
+6. **Bracket:** `python generate_bracket.py` — generates bracket.html, then serve with `python -m http.server 8080` and open http://localhost:8080/bracket.html
+7. **Lookup:** `python lookup.py <team1> <team2>` — quick CLI prediction
 
 ## Tech Stack
 
 - **ML:** scikit-learn, XGBoost, PyTorch (embeddings), Optuna
 - **Data:** pandas, numpy
-- **Web:** Streamlit
+- **Web:** Streamlit, standalone HTML/CSS/JS (bracket.html)
 - **Python:** 3.14 (.venv)
+
+## Bracket View (app.py)
+
+The Streamlit app's "Bracket View" page and `bracket.html` both show:
+- Actual results for completed games (Rounds 1 & 2 as of 2026-03-25) with model win probabilities
+- Model predictions + probabilities for upcoming games (Sweet 16 onward)
+- Green border = correct model pick, Red border = wrong pick, Amber = upset
+- Men's/Women's toggle
+
+`ACTUAL_RESULTS` dict in both `app.py` and `generate_bracket.py` must be updated as games are played.
+Slot codes: **W=East, X=South, Y=Midwest, Z=West** (men's); W/X/Y/Z=Regionals 1/4/3/2 (women's).
 
 ## Notes
 
 - CSV data files are gitignored
+- `bracket.html` must be served via HTTP (`python -m http.server 8080`), not opened as file://
 - Reproducibility seeded with `np.random.seed(42)` and PyTorch manual seed
 - `UPSET_THRESHOLD` and `SEED_PROXY_SEASON` constants control bracket simulation behavior

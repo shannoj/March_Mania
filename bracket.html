@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>March Mania 2026 Bracket</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background: #f3f4f6; min-height: 100vh; }
+
+  /* ── Header ── */
+  #header { background: #1a237e; color: white; padding: 12px 20px;
+             display: flex; align-items: center; gap: 20px; position: sticky;
+             top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+  #header h1 { font-size: 18px; font-weight: 700; white-space: nowrap; }
+  .toggle-btn { padding: 5px 14px; border-radius: 20px; border: 2px solid rgba(255,255,255,.5);
+                background: transparent; color: white; cursor: pointer; font-size: 13px;
+                font-weight: 600; transition: all .15s; }
+  .toggle-btn.active { background: white; color: #1a237e; border-color: white; }
+  #legend { display: flex; gap: 14px; margin-left: auto; font-size: 11px; flex-wrap: wrap; }
+  .leg { display: flex; align-items: center; gap: 4px; }
+  .leg-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+  /* ── Scroll container ── */
+  #bracket-scroll { overflow-x: auto; overflow-y: auto; padding: 16px;
+                    max-height: calc(100vh - 56px); }
+
+  /* ── Bracket layout ── */
+  #bracket-wrap { display: inline-flex; flex-direction: column; gap: 0;
+                  position: relative; }
+  .bracket-half { display: flex; align-items: stretch; }
+  .half-inner { display: flex; align-items: stretch; }
+  .region { display: flex; flex-direction: column; }
+  .region-name { font-size: 22px; font-weight: 900; text-align: center;
+                 padding: 4px 8px; letter-spacing: 1px; color: #1a237e;
+                 writing-mode: horizontal-tb; }
+  .rounds-row { display: flex; align-items: stretch; gap: 0; }
+  .round { display: flex; flex-direction: column; justify-content: space-around;
+           width: 168px; padding: 0 3px; }
+
+  /* ── Cards ── */
+  .game-card { background: white; border-radius: 8px;
+               box-shadow: 0 1px 3px rgba(0,0,0,.1);
+               border: 1.5px solid #e5e7eb; margin: 2px 0;
+               padding: 5px 7px; cursor: default; min-width: 0; }
+  .game-card.correct  { border-color: #22c55e; border-width: 1.5px; }
+  .game-card.wrong    { border-color: #ef4444; border-width: 2px; }
+  .game-card.upcoming { border-color: #e5e7eb; }
+  .game-card.tbd-card { border-color: #e5e7eb; opacity: .5; }
+
+  .team-row { display: flex; align-items: center; gap: 4px;
+              padding: 2px 0; font-size: 12px; line-height: 1.3; }
+  .team-row.winner-row { font-weight: 700; color: #111; }
+  .team-row.loser-row  { color: #9ca3af; }
+  .team-row.upset-row  { color: #92400e; background: #fef3c7;
+                         border-radius: 3px; padding: 2px 3px; margin: 0 -3px; }
+  .seed  { font-size: 10px; color: #6b7280; min-width: 16px;
+           text-align: right; flex-shrink: 0; }
+  .winner-row .seed { color: #374151; }
+  .tname { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .loser-row .tname s { text-decoration-color: #9ca3af; }
+  .prob  { font-size: 10px; margin-left: 4px; flex-shrink: 0; color: #374151; }
+  .loser-row .prob { color: #9ca3af; }
+  .champ-p { font-size: 9px; color: #2563eb; margin-left: 2px; flex-shrink: 0; }
+  .check   { font-size: 10px; color: #22c55e; margin-left: 2px; flex-shrink: 0; }
+  .cross   { font-size: 10px; color: #ef4444; margin-left: 2px; flex-shrink: 0; }
+  .divider { height: 1px; background: #f3f4f6; margin: 1px 0; }
+  .card-footer { font-size: 9px; color: #9ca3af; text-align: right; margin-top: 1px; }
+
+  /* ── Connector column (gap between rounds) ── */
+  .connector-col { width: 20px; flex-shrink: 0; }
+
+  /* ── Final Four column ── */
+  .ff-col { display: flex; flex-direction: column; justify-content: center;
+            align-items: center; width: 188px; padding: 0 6px; gap: 6px; }
+  .ff-label { font-size: 10px; font-weight: 800; color: #6b7280;
+              letter-spacing: 1px; text-transform: uppercase; text-align: center; }
+
+  /* ── Championship ── */
+  #championship { display: flex; justify-content: center; align-items: center;
+                  padding: 8px 0; background: #fffbeb;
+                  border-top: 1px solid #fde68a; border-bottom: 1px solid #fde68a; }
+  .champ-inner { text-align: center; }
+  .champ-label { font-size: 10px; font-weight: 800; color: #92400e;
+                 letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
+  .champ-box { background: white; border: 2px solid #f59e0b; border-radius: 10px;
+               padding: 6px 16px; font-weight: 700; font-size: 14px;
+               display: inline-flex; align-items: center; gap: 6px; }
+  .champ-sub { font-size: 11px; color: #6b7280; font-weight: 400; }
+
+  /* ── SVG overlay ── */
+  #connector-svg { position: absolute; top: 0; left: 0;
+                   pointer-events: none; z-index: 0; overflow: visible; }
+  .bracket-half, .half-inner, .region, .rounds-row, .round,
+  .game-card, .ff-col { position: relative; z-index: 1; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>🏀 March Mania 2026</h1>
+  <button class="toggle-btn active" id="btn-M" onclick="setGender('M')">Men's</button>
+  <button class="toggle-btn"        id="btn-W" onclick="setGender('W')">Women's</button>
+  <div id="legend">
+    <div class="leg"><div class="leg-dot" style="border:1.5px solid #22c55e;background:#f0fdf4"></div> Correct pick</div>
+    <div class="leg"><div class="leg-dot" style="border:2px solid #ef4444;background:#fef2f2"></div> Wrong pick</div>
+    <div class="leg"><div class="leg-dot" style="background:#fef3c7;border:1px solid #f59e0b"></div> Upset</div>
+    <div class="leg" style="color:rgba(255,255,255,.8)">% = model probability &nbsp;|&nbsp; Blue = champ odds</div>
+  </div>
+</div>
+
+<div id="bracket-scroll">
+  <div id="bracket-wrap">
+    <svg id="connector-svg"></svg>
+    <div class="bracket-half" id="top-half"></div>
+    <div id="championship"></div>
+    <div class="bracket-half" id="bot-half"></div>
+  </div>
+</div>
+
+<script>
+const DATA = {"M": {"R1W1": {"winner": "Duke", "winner_seed": 1, "loser": "Siena", "loser_seed": 16, "winner_prob": 0.94, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.2025}, "R1W2": {"winner": "Connecticut", "winner_seed": 2, "loser": "Furman", "loser_seed": 15, "winner_prob": 0.944, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0246}, "R1W3": {"winner": "Michigan St", "winner_seed": 3, "loser": "N Dakota St", "loser_seed": 14, "winner_prob": 0.84, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0283}, "R1W4": {"winner": "Kansas", "winner_seed": 4, "loser": "Cal Baptist", "loser_seed": 13, "winner_prob": 0.777, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0126}, "R1W5": {"winner": "St John's", "winner_seed": 5, "loser": "Northern Iowa", "loser_seed": 12, "winner_prob": 0.805, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0155}, "R1W6": {"winner": "Louisville", "winner_seed": 6, "loser": "South Florida", "loser_seed": 11, "winner_prob": 0.782, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0184}, "R1W7": {"winner": "UCLA", "winner_seed": 7, "loser": "UCF", "loser_seed": 10, "winner_prob": 0.738, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.005}, "R1W8": {"winner": "TCU", "winner_seed": 9, "loser": "Ohio St", "loser_seed": 8, "winner_prob": 0.382, "is_upset": 1, "is_final": 1, "model_correct": 0, "champ_prob": 0.0033}, "R1X2": {"winner": "Houston", "winner_seed": 2, "loser": "Idaho", "loser_seed": 15, "winner_prob": 0.942, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.064}, "R1X3": {"winner": "Illinois", "winner_seed": 3, "loser": "Penn", "loser_seed": 14, "winner_prob": 0.929, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0187}, "R1X4": {"winner": "Nebraska", "winner_seed": 4, "loser": "Troy", "loser_seed": 13, "winner_prob": 0.927, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0089}, "R1X5": {"winner": "Vanderbilt", "winner_seed": 5, "loser": "McNeese St", "loser_seed": 12, "winner_prob": 0.782, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0108}, "R1X6": {"winner": "VCU", "winner_seed": 11, "loser": "North Carolina", "loser_seed": 6, "winner_prob": 0.411, "is_upset": 1, "is_final": 1, "model_correct": 0, "champ_prob": 0.0032}, "R1X7": {"winner": "Texas A&M", "winner_seed": 10, "loser": "St Mary's CA", "loser_seed": 7, "winner_prob": 0.139, "is_upset": 1, "is_final": 1, "model_correct": 0, "champ_prob": 0.0018}, "R1X8": {"winner": "Iowa", "winner_seed": 9, "loser": "Clemson", "loser_seed": 8, "winner_prob": 0.534, "is_upset": 1, "is_final": 1, "model_correct": 1, "champ_prob": 0.0041}, "R1Y2": {"winner": "Iowa St", "winner_seed": 2, "loser": "Tennessee St", "loser_seed": 15, "winner_prob": 0.93, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0407}, "R1Y3": {"winner": "Virginia", "winner_seed": 3, "loser": "Wright St", "loser_seed": 14, "winner_prob": 0.94, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0194}, "R1Y4": {"winner": "Alabama", "winner_seed": 4, "loser": "Hofstra", "loser_seed": 13, "winner_prob": 0.834, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0053}, "R1Y5": {"winner": "Texas Tech", "winner_seed": 5, "loser": "Akron", "loser_seed": 12, "winner_prob": 0.645, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0053}, "R1Y7": {"winner": "Kentucky", "winner_seed": 7, "loser": "Santa Clara", "loser_seed": 10, "winner_prob": 0.592, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0028}, "R1Y8": {"winner": "St Louis", "winner_seed": 9, "loser": "Georgia", "loser_seed": 8, "winner_prob": 0.623, "is_upset": 1, "is_final": 1, "model_correct": 1, "champ_prob": 0.0062}, "R1Z1": {"winner": "Arizona", "winner_seed": 1, "loser": "LIU Brooklyn", "loser_seed": 16, "winner_prob": 0.948, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.1467}, "R1Z2": {"winner": "Purdue", "winner_seed": 2, "loser": "Queens NC", "loser_seed": 15, "winner_prob": 0.945, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0238}, "R1Z3": {"winner": "Gonzaga", "winner_seed": 3, "loser": "Kennesaw", "loser_seed": 14, "winner_prob": 0.923, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0359}, "R1Z4": {"winner": "Arkansas", "winner_seed": 4, "loser": "Hawaii", "loser_seed": 13, "winner_prob": 0.796, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0102}, "R1Z5": {"winner": "High Point", "winner_seed": 12, "loser": "Wisconsin", "loser_seed": 5, "winner_prob": 0.341, "is_upset": 1, "is_final": 1, "model_correct": 0, "champ_prob": 0.0017}, "R1Z7": {"winner": "Miami FL", "winner_seed": 7, "loser": "Missouri", "loser_seed": 10, "winner_prob": 0.753, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0061}, "R1Z8": {"winner": "Utah St", "winner_seed": 9, "loser": "Villanova", "loser_seed": 8, "winner_prob": 0.425, "is_upset": 1, "is_final": 1, "model_correct": 0, "champ_prob": 0.0057}, "R2W1": {"winner": "Duke", "winner_seed": 1, "loser": "TCU", "loser_seed": 9, "winner_prob": 0.893, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.2025}, "R2W2": {"winner": "Connecticut", "winner_seed": 2, "loser": "UCLA", "loser_seed": 7, "winner_prob": 0.714, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0246}, "R2W3": {"winner": "Michigan St", "winner_seed": 3, "loser": "Louisville", "loser_seed": 6, "winner_prob": 0.613, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0283}, "R2W4": {"winner": "St John's", "winner_seed": 5, "loser": "Kansas", "loser_seed": 4, "winner_prob": 0.4, "is_upset": 1, "is_final": 1, "model_correct": 0, "champ_prob": 0.0155}, "R2X2": {"winner": "Houston", "winner_seed": 2, "loser": "Texas A&M", "loser_seed": 10, "winner_prob": 0.905, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.064}, "R2X3": {"winner": "Illinois", "winner_seed": 3, "loser": "VCU", "loser_seed": 11, "winner_prob": 0.8, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0187}, "R2X4": {"winner": "Nebraska", "winner_seed": 4, "loser": "Vanderbilt", "loser_seed": 5, "winner_prob": 0.418, "is_upset": 0, "is_final": 1, "model_correct": 0, "champ_prob": 0.0089}, "R2Y2": {"winner": "Iowa St", "winner_seed": 2, "loser": "Kentucky", "loser_seed": 7, "winner_prob": 0.645, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0407}, "R2Y4": {"winner": "Alabama", "winner_seed": 4, "loser": "Texas Tech", "loser_seed": 5, "winner_prob": 0.705, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0053}, "R2Z1": {"winner": "Arizona", "winner_seed": 1, "loser": "Utah St", "loser_seed": 9, "winner_prob": 0.861, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.1467}, "R2Z2": {"winner": "Purdue", "winner_seed": 2, "loser": "Miami FL", "loser_seed": 7, "winner_prob": 0.596, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0238}, "R2Z4": {"winner": "Arkansas", "winner_seed": 4, "loser": "High Point", "loser_seed": 12, "winner_prob": 0.726, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0102}, "R3W1": {"winner": "Duke", "winner_seed": 1, "loser": "St John's", "loser_seed": 5, "winner_prob": 0.713, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.2025}, "R3W2": {"winner": "Michigan St", "winner_seed": 3, "loser": "Connecticut", "loser_seed": 2, "winner_prob": 0.568, "is_upset": 1, "is_final": 0, "model_correct": 0, "champ_prob": 0.0283}, "R3X2": {"winner": "Houston", "winner_seed": 2, "loser": "Illinois", "loser_seed": 3, "winner_prob": 0.558, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.064}, "R3Z1": {"winner": "Arizona", "winner_seed": 1, "loser": "Arkansas", "loser_seed": 4, "winner_prob": 0.798, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.1467}, "R4W1": {"winner": "Duke", "winner_seed": 1, "loser": "Michigan St", "loser_seed": 3, "winner_prob": 0.777, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.2025}, "X16": {"winner": "Prairie View", "winner_seed": 16, "loser": "Lehigh", "loser_seed": 16, "winner_prob": 0.301, "is_upset": 0, "is_final": 1, "model_correct": 0, "champ_prob": 0.0001}, "Y11": {"winner": "Miami OH", "winner_seed": 11, "loser": "SMU", "loser_seed": 11, "winner_prob": 0.302, "is_upset": 0, "is_final": 1, "model_correct": 0, "champ_prob": 0.0005}, "Y16": {"winner": "Howard", "winner_seed": 16, "loser": "UMBC", "loser_seed": 16, "winner_prob": 0.412, "is_upset": 0, "is_final": 1, "model_correct": 0, "champ_prob": 0.0001}, "Z11": {"winner": "Texas", "winner_seed": 11, "loser": "NC State", "loser_seed": 11, "winner_prob": 0.5, "is_upset": 0, "is_final": 1, "model_correct": 0, "champ_prob": 0.001}, "R1X1": {"winner": "Florida", "winner_seed": 1, "loser": "Prairie View", "loser_seed": 16, "winner_prob": 0.942, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0442}, "R1Y1": {"winner": "Michigan", "winner_seed": 1, "loser": "Howard", "loser_seed": 16, "winner_prob": 0.94, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.1607}, "R1Y6": {"winner": "Tennessee", "winner_seed": 6, "loser": "Miami OH", "loser_seed": 11, "winner_prob": 0.705, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0051}, "R1Z6": {"winner": "Texas", "winner_seed": 11, "loser": "BYU", "loser_seed": 6, "winner_prob": 0.323, "is_upset": 1, "is_final": 1, "model_correct": 0, "champ_prob": 0.001}, "R2X1": {"winner": "Iowa", "winner_seed": 9, "loser": "Florida", "loser_seed": 1, "winner_prob": 0.189, "is_upset": 1, "is_final": 1, "model_correct": 0, "champ_prob": 0.0041}, "R2Y1": {"winner": "Michigan", "winner_seed": 1, "loser": "St Louis", "loser_seed": 9, "winner_prob": 0.814, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.1607}, "R2Y3": {"winner": "Tennessee", "winner_seed": 6, "loser": "Virginia", "loser_seed": 3, "winner_prob": 0.331, "is_upset": 1, "is_final": 1, "model_correct": 0, "champ_prob": 0.0051}, "R2Z3": {"winner": "Texas", "winner_seed": 11, "loser": "Gonzaga", "loser_seed": 3, "winner_prob": 0.194, "is_upset": 1, "is_final": 1, "model_correct": 0, "champ_prob": 0.001}, "R3X1": {"winner": "Nebraska", "winner_seed": 4, "loser": "Iowa", "loser_seed": 9, "winner_prob": 0.756, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.0089}, "R3Y1": {"winner": "Michigan", "winner_seed": 1, "loser": "Alabama", "loser_seed": 4, "winner_prob": 0.892, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.1607}, "R3Y2": {"winner": "Iowa St", "winner_seed": 2, "loser": "Tennessee", "loser_seed": 6, "winner_prob": 0.77, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.0407}, "R3Z2": {"winner": "Purdue", "winner_seed": 2, "loser": "Texas", "loser_seed": 11, "winner_prob": 0.875, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.0238}, "R4X1": {"winner": "Houston", "winner_seed": 2, "loser": "Nebraska", "loser_seed": 4, "winner_prob": 0.598, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.064}, "R4Y1": {"winner": "Michigan", "winner_seed": 1, "loser": "Iowa St", "loser_seed": 2, "winner_prob": 0.751, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.1607}, "R4Z1": {"winner": "Arizona", "winner_seed": 1, "loser": "Purdue", "loser_seed": 2, "winner_prob": 0.76, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.1467}, "R5WX": {"winner": "Duke", "winner_seed": 1, "loser": "Houston", "loser_seed": 2, "winner_prob": 0.53, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.2025}, "R5YZ": {"winner": "Michigan", "winner_seed": 1, "loser": "Arizona", "loser_seed": 1, "winner_prob": 0.51, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.1607}, "R6CH": {"winner": "Duke", "winner_seed": 1, "loser": "Michigan", "loser_seed": 1, "winner_prob": 0.642, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.2025}}, "W": {"R1W1": {"winner": "Connecticut", "winner_seed": 1, "loser": "UT San Antonio", "loser_seed": 16, "winner_prob": 0.999, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.4163}, "R1W2": {"winner": "Vanderbilt", "winner_seed": 2, "loser": "High Point", "loser_seed": 15, "winner_prob": 0.989, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0055}, "R1W3": {"winner": "Ohio St", "winner_seed": 3, "loser": "Howard", "loser_seed": 14, "winner_prob": 0.99, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0032}, "R1W4": {"winner": "North Carolina", "winner_seed": 4, "loser": "W Illinois", "loser_seed": 13, "winner_prob": 0.949, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0027}, "R1W5": {"winner": "Maryland", "winner_seed": 5, "loser": "Murray St", "loser_seed": 12, "winner_prob": 0.971, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0025}, "R1W6": {"winner": "Notre Dame", "winner_seed": 6, "loser": "Fairfield", "loser_seed": 11, "winner_prob": 0.77, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0006}, "R1W7": {"winner": "Illinois", "winner_seed": 7, "loser": "Colorado", "loser_seed": 10, "winner_prob": 0.697, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0017}, "R1W8": {"winner": "Syracuse", "winner_seed": 9, "loser": "Iowa St", "loser_seed": 8, "winner_prob": 0.309, "is_upset": 1, "is_final": 1, "model_correct": 0, "champ_prob": 0.0}, "R1X2": {"winner": "Iowa", "winner_seed": 2, "loser": "F Dickinson", "loser_seed": 15, "winner_prob": 0.98, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0034}, "R1X3": {"winner": "TCU", "winner_seed": 3, "loser": "UC San Diego", "loser_seed": 14, "winner_prob": 0.987, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.005}, "R1X4": {"winner": "Oklahoma", "winner_seed": 4, "loser": "Idaho", "loser_seed": 13, "winner_prob": 0.974, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0029}, "R1X5": {"winner": "Michigan St", "winner_seed": 5, "loser": "Colorado St", "loser_seed": 12, "winner_prob": 0.944, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0023}, "R1X6": {"winner": "Washington", "winner_seed": 6, "loser": "S Dakota St", "loser_seed": 11, "winner_prob": 0.72, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0005}, "R1X8": {"winner": "USC", "winner_seed": 9, "loser": "Clemson", "loser_seed": 8, "winner_prob": 0.713, "is_upset": 1, "is_final": 1, "model_correct": 1, "champ_prob": 0.0004}, "R1Y2": {"winner": "Michigan", "winner_seed": 2, "loser": "Holy Cross", "loser_seed": 15, "winner_prob": 0.991, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0119}, "R1Y3": {"winner": "Louisville", "winner_seed": 3, "loser": "Vermont", "loser_seed": 14, "winner_prob": 0.964, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0063}, "R1Y4": {"winner": "West Virginia", "winner_seed": 4, "loser": "Miami OH", "loser_seed": 13, "winner_prob": 0.97, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0057}, "R1Y5": {"winner": "Kentucky", "winner_seed": 5, "loser": "James Madison", "loser_seed": 12, "winner_prob": 0.87, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0028}, "R1Y6": {"winner": "Alabama", "winner_seed": 6, "loser": "Rhode Island", "loser_seed": 11, "winner_prob": 0.732, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0006}, "R1Y7": {"winner": "NC State", "winner_seed": 7, "loser": "Tennessee", "loser_seed": 10, "winner_prob": 0.497, "is_upset": 0, "is_final": 1, "model_correct": 0, "champ_prob": 0.0009}, "R1Y8": {"winner": "Oregon", "winner_seed": 8, "loser": "Virginia Tech", "loser_seed": 9, "winner_prob": 0.687, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0007}, "R1Z1": {"winner": "UCLA", "winner_seed": 1, "loser": "Cal Baptist", "loser_seed": 16, "winner_prob": 0.998, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.1715}, "R1Z2": {"winner": "LSU", "winner_seed": 2, "loser": "Jacksonville", "loser_seed": 15, "winner_prob": 0.998, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.1031}, "R1Z3": {"winner": "Duke", "winner_seed": 3, "loser": "Col Charleston", "loser_seed": 14, "winner_prob": 0.978, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0055}, "R1Z4": {"winner": "Minnesota", "winner_seed": 4, "loser": "WI Green Bay", "loser_seed": 13, "winner_prob": 0.968, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0039}, "R1Z5": {"winner": "Mississippi", "winner_seed": 5, "loser": "Gonzaga", "loser_seed": 12, "winner_prob": 0.87, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0019}, "R1Z7": {"winner": "Texas Tech", "winner_seed": 7, "loser": "Villanova", "loser_seed": 10, "winner_prob": 0.68, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0008}, "R1Z8": {"winner": "Oklahoma St", "winner_seed": 8, "loser": "Princeton", "loser_seed": 9, "winner_prob": 0.613, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0006}, "R2W1": {"winner": "Connecticut", "winner_seed": 1, "loser": "Syracuse", "loser_seed": 9, "winner_prob": 0.991, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.4163}, "R2W2": {"winner": "Vanderbilt", "winner_seed": 2, "loser": "Illinois", "loser_seed": 7, "winner_prob": 0.745, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0055}, "R2W3": {"winner": "Notre Dame", "winner_seed": 6, "loser": "Ohio St", "loser_seed": 3, "winner_prob": 0.33, "is_upset": 1, "is_final": 1, "model_correct": 0, "champ_prob": 0.0006}, "R2W4": {"winner": "North Carolina", "winner_seed": 4, "loser": "Maryland", "loser_seed": 5, "winner_prob": 0.416, "is_upset": 0, "is_final": 1, "model_correct": 0, "champ_prob": 0.0027}, "R2X3": {"winner": "TCU", "winner_seed": 3, "loser": "Washington", "loser_seed": 6, "winner_prob": 0.775, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.005}, "R2X4": {"winner": "Oklahoma", "winner_seed": 4, "loser": "Michigan St", "loser_seed": 5, "winner_prob": 0.478, "is_upset": 0, "is_final": 1, "model_correct": 0, "champ_prob": 0.0029}, "R2Y2": {"winner": "Michigan", "winner_seed": 2, "loser": "NC State", "loser_seed": 7, "winner_prob": 0.816, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0119}, "R2Y3": {"winner": "Louisville", "winner_seed": 3, "loser": "Alabama", "loser_seed": 6, "winner_prob": 0.768, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0063}, "R2Y4": {"winner": "Kentucky", "winner_seed": 5, "loser": "West Virginia", "loser_seed": 4, "winner_prob": 0.423, "is_upset": 1, "is_final": 1, "model_correct": 0, "champ_prob": 0.0028}, "R2Z1": {"winner": "UCLA", "winner_seed": 1, "loser": "Oklahoma St", "loser_seed": 8, "winner_prob": 0.96, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.1715}, "R2Z2": {"winner": "LSU", "winner_seed": 2, "loser": "Texas Tech", "loser_seed": 7, "winner_prob": 0.943, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.1031}, "R2Z4": {"winner": "Minnesota", "winner_seed": 4, "loser": "Mississippi", "loser_seed": 5, "winner_prob": 0.632, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0039}, "R3W1": {"winner": "Connecticut", "winner_seed": 1, "loser": "North Carolina", "loser_seed": 4, "winner_prob": 0.962, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.4163}, "R3W2": {"winner": "Vanderbilt", "winner_seed": 2, "loser": "Notre Dame", "loser_seed": 6, "winner_prob": 0.753, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.0055}, "R3Y2": {"winner": "Michigan", "winner_seed": 2, "loser": "Louisville", "loser_seed": 3, "winner_prob": 0.579, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.0119}, "R3Z1": {"winner": "UCLA", "winner_seed": 1, "loser": "Minnesota", "loser_seed": 4, "winner_prob": 0.895, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.1715}, "R4W1": {"winner": "Connecticut", "winner_seed": 1, "loser": "Vanderbilt", "loser_seed": 2, "winner_prob": 0.931, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.4163}, "X10": {"winner": "Virginia", "winner_seed": 10, "loser": "Arizona St", "loser_seed": 10, "winner_prob": 0.546, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0001}, "X16": {"winner": "Southern Univ", "winner_seed": 16, "loser": "Samford", "loser_seed": 16, "winner_prob": 0.666, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0}, "Y16": {"winner": "Missouri St", "winner_seed": 16, "loser": "SF Austin", "loser_seed": 16, "winner_prob": 0.646, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0}, "Z11": {"winner": "Nebraska", "winner_seed": 11, "loser": "Richmond", "loser_seed": 11, "winner_prob": 0.609, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0008}, "R1X1": {"winner": "South Carolina", "winner_seed": 1, "loser": "Southern Univ", "loser_seed": 16, "winner_prob": 0.999, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.1193}, "R1X7": {"winner": "Virginia", "winner_seed": 10, "loser": "Georgia", "loser_seed": 7, "winner_prob": 0.345, "is_upset": 1, "is_final": 1, "model_correct": 0, "champ_prob": 0.0001}, "R1Y1": {"winner": "Texas", "winner_seed": 1, "loser": "Missouri St", "loser_seed": 16, "winner_prob": 0.997, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.1117}, "R1Z6": {"winner": "Baylor", "winner_seed": 6, "loser": "Nebraska", "loser_seed": 11, "winner_prob": 0.544, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.001}, "R2X1": {"winner": "South Carolina", "winner_seed": 1, "loser": "USC", "loser_seed": 9, "winner_prob": 0.952, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.1193}, "R2X2": {"winner": "Virginia", "winner_seed": 10, "loser": "Iowa", "loser_seed": 2, "winner_prob": 0.167, "is_upset": 1, "is_final": 1, "model_correct": 0, "champ_prob": 0.0001}, "R2Y1": {"winner": "Texas", "winner_seed": 1, "loser": "Oregon", "loser_seed": 8, "winner_prob": 0.956, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.1117}, "R2Z3": {"winner": "Duke", "winner_seed": 3, "loser": "Baylor", "loser_seed": 6, "winner_prob": 0.727, "is_upset": 0, "is_final": 1, "model_correct": 1, "champ_prob": 0.0055}, "R3X1": {"winner": "South Carolina", "winner_seed": 1, "loser": "Oklahoma", "loser_seed": 4, "winner_prob": 0.904, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.1193}, "R3X2": {"winner": "TCU", "winner_seed": 3, "loser": "Virginia", "loser_seed": 10, "winner_prob": 0.893, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.005}, "R3Y1": {"winner": "Texas", "winner_seed": 1, "loser": "Kentucky", "loser_seed": 5, "winner_prob": 0.87, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.1117}, "R3Z2": {"winner": "LSU", "winner_seed": 2, "loser": "Duke", "loser_seed": 3, "winner_prob": 0.842, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.1031}, "R4X1": {"winner": "South Carolina", "winner_seed": 1, "loser": "TCU", "loser_seed": 3, "winner_prob": 0.839, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.1193}, "R4Y1": {"winner": "Texas", "winner_seed": 1, "loser": "Michigan", "loser_seed": 2, "winner_prob": 0.779, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.1117}, "R4Z1": {"winner": "UCLA", "winner_seed": 1, "loser": "LSU", "loser_seed": 2, "winner_prob": 0.579, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.1715}, "R5WX": {"winner": "Connecticut", "winner_seed": 1, "loser": "South Carolina", "loser_seed": 1, "winner_prob": 0.715, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.4163}, "R5YZ": {"winner": "UCLA", "winner_seed": 1, "loser": "Texas", "loser_seed": 1, "winner_prob": 0.578, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.1715}, "R6CH": {"winner": "Connecticut", "winner_seed": 1, "loser": "UCLA", "loser_seed": 1, "winner_prob": 0.658, "is_upset": 0, "is_final": 0, "model_correct": 0, "champ_prob": 0.4163}}};
+
+const REGION_NAMES = {
+  M: { W:'East', X:'South', Y:'Midwest', Z:'West' },
+  W: { W:'Regional 1', X:'Regional 4', Y:'Regional 3', Z:'Regional 2' }
+};
+
+const SLOT_ORDER = {
+  R1:[1,8,5,4,6,3,7,2],
+  R2:[1,4,3,2],
+  R3:[1,2],
+  R4:[1]
+};
+
+let currentGender = 'M';
+
+function pct(p){ return Math.round(p*100)+'%'; }
+
+function makeCard(slot, data) {
+  const info = data[slot];
+  if (!info) return `<div class="game-card tbd-card" id="card-${slot}"><div class="team-row" style="color:#ccc;font-size:11px;justify-content:center">TBD</div></div>`;
+
+  const {winner, winner_seed, loser, loser_seed, winner_prob, is_upset, is_final, model_correct, champ_prob} = info;
+
+  let cardCls = 'game-card ';
+  let wExtra = '', lExtra = '', footer = '';
+
+  if (is_final && model_correct) {
+    cardCls += 'correct';
+    wExtra = `<span class="prob">${pct(winner_prob)}</span><span class="check">✓</span>`;
+    lExtra = `<span class="prob">${pct(1-winner_prob)}</span>`;
+    footer = `<div class="card-footer">Final</div>`;
+  } else if (is_final && !model_correct) {
+    cardCls += 'wrong';
+    wExtra = `<span class="prob">${pct(winner_prob)}</span><span class="cross">✗</span>`;
+    lExtra = `<span class="prob">${pct(1-winner_prob)}</span>`;
+    footer = `<div class="card-footer">Final</div>`;
+  } else {
+    cardCls += 'upcoming';
+    wExtra = `<span class="prob">${pct(winner_prob)}</span><span class="champ-p">${pct(champ_prob)}</span>`;
+    lExtra = `<span class="prob">${pct(1-winner_prob)}</span>`;
+  }
+
+  const wRowCls = 'team-row winner-row' + (is_upset ? ' upset-row' : '');
+  const loserName = is_final ? `<s>${loser}</s>` : loser;
+
+  return `<div class="${cardCls}" id="card-${slot}">
+    <div class="${wRowCls}">
+      <span class="seed">${winner_seed}</span>
+      <span class="tname">${winner}</span>
+      ${wExtra}
+    </div>
+    <div class="divider"></div>
+    <div class="team-row loser-row">
+      <span class="seed">${loser_seed}</span>
+      <span class="tname">${loserName}</span>
+      ${lExtra}
+    </div>
+    ${footer}
+  </div>`;
+}
+
+function makeRound(region, rnd, data) {
+  const cards = SLOT_ORDER[rnd].map(i => makeCard(`${rnd}${region}${i}`, data)).join('');
+  return `<div class="round" id="round-${rnd}${region}">${cards}</div><div class="connector-col"></div>`;
+}
+
+function makeRegion(code, reversed, data, name) {
+  const rnds = reversed ? ['R4','R3','R2','R1'] : ['R1','R2','R3','R4'];
+  // For reversed, the connector-col goes BEFORE each round (left side)
+  let roundsHtml;
+  if (reversed) {
+    roundsHtml = rnds.map(r => {
+      const cards = SLOT_ORDER[r].map(i => makeCard(`${r}${code}${i}`, data)).join('');
+      return `<div class="connector-col"></div><div class="round" id="round-${r}${code}">${cards}</div>`;
+    }).join('');
+  } else {
+    roundsHtml = rnds.map(r => {
+      const cards = SLOT_ORDER[r].map(i => makeCard(`${r}${code}${i}`, data)).join('');
+      return `<div class="round" id="round-${r}${code}">${cards}</div><div class="connector-col"></div>`;
+    }).join('');
+  }
+  return `<div class="region" id="region-${code}">
+    <div class="region-name">${name}</div>
+    <div class="rounds-row">${roundsHtml}</div>
+  </div>`;
+}
+
+function renderBracket(gender) {
+  const data = DATA[gender];
+  const names = REGION_NAMES[gender];
+
+  // Top half: W (left) + FF WX + X (right, reversed)
+  document.getElementById('top-half').innerHTML = `
+    <div class="half-inner">
+      ${makeRegion('W', false, data, names.W)}
+      <div class="ff-col" id="ff-WX">
+        <div class="ff-label">Final Four</div>
+        ${makeCard('R5WX', data)}
+      </div>
+      ${makeRegion('X', true, data, names.X)}
+    </div>`;
+
+  // Championship
+  const champ = data['R6CH'];
+  let champHtml = '<div class="champ-box">TBD</div>';
+  if (champ) {
+    const sub = champ.is_final ? '' : `<span class="champ-sub">${pct(champ.champ_prob)}</span>`;
+    const mark = champ.is_final ? (champ.model_correct ? ' ✓' : ' ✗') : '';
+    champHtml = `<div class="champ-box">🏆 #${champ.winner_seed} ${champ.winner}${mark} ${sub}</div>`;
+  }
+  document.getElementById('championship').innerHTML = `
+    <div class="champ-inner">
+      <div class="champ-label">Championship</div>
+      ${champHtml}
+    </div>`;
+
+  // Bottom half: Y (left) + FF YZ + Z (right, reversed)
+  document.getElementById('bot-half').innerHTML = `
+    <div class="half-inner">
+      ${makeRegion('Y', false, data, names.Y)}
+      <div class="ff-col" id="ff-YZ">
+        <div class="ff-label">Final Four</div>
+        ${makeCard('R5YZ', data)}
+      </div>
+      ${makeRegion('Z', true, data, names.Z)}
+    </div>`;
+
+  setTimeout(() => drawConnectors(gender), 60);
+}
+
+function drawConnectors(gender) {
+  const wrap = document.getElementById('bracket-wrap');
+  const svg  = document.getElementById('connector-svg');
+  const wRect = wrap.getBoundingClientRect();
+
+  svg.setAttribute('width',  wrap.scrollWidth);
+  svg.setAttribute('height', wrap.scrollHeight);
+  svg.innerHTML = '';
+
+  const data = DATA[gender];
+  const STROKE = '#d1d5db';
+  const SW = 1.5;
+
+  function line(x1,y1,x2,y2) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg','line');
+    el.setAttribute('x1',x1); el.setAttribute('y1',y1);
+    el.setAttribute('x2',x2); el.setAttribute('y2',y2);
+    el.setAttribute('stroke', STROKE); el.setAttribute('stroke-width', SW);
+    svg.appendChild(el);
+  }
+
+  function cardEdges(id) {
+    const el = document.getElementById('card-'+id);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return {
+      left:  r.left  - wRect.left,
+      right: r.right - wRect.left,
+      cy:    (r.top + r.bottom)/2 - wRect.top,
+      top:   r.top  - wRect.top,
+      bot:   r.bottom - wRect.top,
+    };
+  }
+
+  const ROUNDS = ['R1','R2','R3','R4'];
+  const LEFT_REGIONS  = ['W','Y'];
+  const RIGHT_REGIONS = ['X','Z'];
+
+  // Draw within-region connectors
+  ['W','X','Y','Z'].forEach(region => {
+    const isRight = RIGHT_REGIONS.includes(region);
+
+    ROUNDS.forEach((rnd, ri) => {
+      if (ri === ROUNDS.length-1) return;
+      const nextRnd = ROUNDS[ri+1];
+      const curOrd  = SLOT_ORDER[rnd];
+      const nxtOrd  = SLOT_ORDER[nextRnd];
+
+      nxtOrd.forEach((nIdx, ni) => {
+        const c1 = cardEdges(`${rnd}${region}${curOrd[2*ni]}`);
+        const c2 = cardEdges(`${rnd}${region}${curOrd[2*ni+1]}`);
+        const cn = cardEdges(`${nextRnd}${region}${nIdx}`);
+        if (!c1||!c2||!cn) return;
+
+        const midY = (c1.cy + c2.cy)/2;
+
+        if (!isRight) {
+          const xM = (c1.right + cn.left)/2;
+          line(c1.right, c1.cy, xM, c1.cy);
+          line(xM, c1.cy, xM, c2.cy);
+          line(c2.right, c2.cy, xM, c2.cy);
+          line(xM, midY, cn.left, cn.cy);
+        } else {
+          const xM = (c1.left + cn.right)/2;
+          line(c1.left, c1.cy, xM, c1.cy);
+          line(xM, c1.cy, xM, c2.cy);
+          line(c2.left, c2.cy, xM, c2.cy);
+          line(xM, midY, cn.right, cn.cy);
+        }
+      });
+    });
+
+    // R4 → Final Four connectors
+    const r4 = cardEdges(`R4${region}1`);
+    const ffSlot = (region==='W'||region==='X') ? 'R5WX' : 'R5YZ';
+    const ff = cardEdges(ffSlot);
+    if (r4 && ff) {
+      if (!isRight) {
+        line(r4.right, r4.cy, ff.left, ff.cy);
+      } else {
+        line(r4.left, r4.cy, ff.right, ff.cy);
+      }
+    }
+  });
+
+  // Final Four → Championship
+  const ffWX = cardEdges('R5WX');
+  const ffYZ = cardEdges('R5YZ');
+  const champ = cardEdges('R6CH');
+  if (ffWX && champ) {
+    const xM = (ffWX.right + champ.left)/2;
+    if (Math.abs(xM - ffWX.right) < 5) {
+      line(ffWX.right, ffWX.bot, ffWX.right, champ.top);
+    } else {
+      line(ffWX.right, ffWX.cy, xM, ffWX.cy);
+      line(xM, ffWX.cy, xM, champ.cy);
+      line(xM, champ.cy, champ.left, champ.cy);
+    }
+  }
+  if (ffYZ && champ) {
+    const xM = (ffYZ.right + champ.left)/2;
+    if (Math.abs(xM - ffYZ.right) < 5) {
+      line(ffYZ.right, ffYZ.top, ffYZ.right, champ.bot);
+    } else {
+      line(ffYZ.right, ffYZ.cy, xM, ffYZ.cy);
+      line(xM, ffYZ.cy, xM, champ.cy);
+      line(xM, champ.cy, champ.left, champ.cy);
+    }
+  }
+}
+
+function setGender(g) {
+  currentGender = g;
+  document.getElementById('btn-M').classList.toggle('active', g==='M');
+  document.getElementById('btn-W').classList.toggle('active', g==='W');
+  renderBracket(g);
+}
+
+renderBracket('M');
+window.addEventListener('resize', () => drawConnectors(currentGender));
+</script>
+</body>
+</html>
